@@ -194,12 +194,21 @@ DATE_FORMAT_STATS = "%Y%m%d"
 # HTTP Headers
 # =============================================================================
 
+# Simple User-Agent that works with V2 API (based on pyticktick)
+V2_USER_AGENT = "Mozilla/5.0 (rv:145.0) Firefox/145.0"
+
+# V2 X-Device version that works
+V2_DEVICE_VERSION = 6430
+
+# Legacy - kept for backwards compatibility but not recommended
+# Use V2_USER_AGENT instead
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:95.0) "
     "Gecko/20100101 Firefox/95.0"
 )
 
-# V2 x-device header template
+# Legacy - kept for backwards compatibility but not recommended
+# Use minimal X-Device with only: platform, version, id
 X_DEVICE_TEMPLATE = {
     "platform": "web",
     "os": "OS X",

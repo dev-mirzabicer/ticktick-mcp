@@ -133,23 +133,79 @@ class BaseTickTickClient(ABC):
     # Error Handling
     # =========================================================================
 
+    # TickTick API error codes that map to specific exceptions
+    # Note: TickTick often returns HTTP 500 with semantic error codes in the body
+    _NOT_FOUND_ERROR_CODES = frozenset({
+        "task_not_found",
+        "project_not_found",
+        "tag_not_found",
+        "tag_not_exist",  # V2 API uses this for tag operations
+        "folder_not_found",
+        "group_not_found",
+        "resource_not_found",
+        "not_found",
+    })
+
+    _FORBIDDEN_ERROR_CODES = frozenset({
+        "access_forbidden",
+        "forbidden",
+        "permission_denied",
+    })
+
+    _AUTH_ERROR_CODES = frozenset({
+        "unauthorized",
+        "invalid_token",
+        "token_expired",
+        "username_password_not_match",
+        "incorrect_password_too_many_times",
+    })
+
     def _handle_error_response(
         self,
         response: httpx.Response,
         endpoint: str,
     ) -> None:
-        """Handle error responses and raise appropriate exceptions."""
+        """Handle error responses and raise appropriate exceptions.
+
+        TickTick's API often returns HTTP 500 for semantic errors like "not found".
+        We check both the HTTP status code AND the errorCode in the response body
+        to determine the actual error type.
+        """
         status_code = response.status_code
 
         # Try to parse error body
         try:
             error_body = response.json()
-            error_message = error_body.get("message", response.text)
+            error_message = error_body.get("errorMessage") or error_body.get("message", response.text)
+            error_code = error_body.get("errorCode", "").lower()
         except (json.JSONDecodeError, ValueError):
             error_body = None
             error_message = response.text
+            error_code = ""
 
-        # Check for specific error types
+        # First, check error codes in response body (takes precedence over HTTP status)
+        # TickTick often returns HTTP 500 with semantic error codes
+        if error_code:
+            if error_code in self._NOT_FOUND_ERROR_CODES:
+                raise TickTickNotFoundError(
+                    f"Resource not found: {error_message}",
+                    endpoint=endpoint,
+                    api_version=self.api_version.value,
+                )
+            elif error_code in self._FORBIDDEN_ERROR_CODES:
+                raise TickTickForbiddenError(
+                    f"Access forbidden: {error_message}",
+                    endpoint=endpoint,
+                    response_body=response.text,
+                    api_version=self.api_version.value,
+                )
+            elif error_code in self._AUTH_ERROR_CODES:
+                raise TickTickAuthenticationError(
+                    f"Authentication failed: {error_message}",
+                    details={"endpoint": endpoint, "response": error_body, "error_code": error_code},
+                )
+
+        # Fall back to HTTP status code based handling
         if status_code == 401:
             raise TickTickAuthenticationError(
                 f"Authentication failed: {error_message}",
@@ -177,6 +233,16 @@ class BaseTickTickClient(ABC):
                 api_version=self.api_version.value,
             )
         elif status_code >= 500:
+            # Check for quota exceeded in response body
+            if error_body and error_body.get("id2error"):
+                for error in error_body["id2error"].values():
+                    if error == "EXCEED_QUOTA":
+                        raise TickTickQuotaExceededError(
+                            "Account quota exceeded",
+                            endpoint=endpoint,
+                            api_version=self.api_version.value,
+                        )
+
             raise TickTickServerError(
                 f"Server error: {error_message}",
                 status_code=status_code,
@@ -363,13 +429,24 @@ class BaseTickTickClient(ABC):
         headers: dict[str, str] | None = None,
         require_auth: bool = True,
     ) -> Any:
-        """Make a GET request and return JSON response."""
+        """Make a GET request and return JSON response.
+
+        Note: V1 API returns HTTP 200 with empty body for nonexistent resources.
+        We handle this by raising TickTickNotFoundError.
+        """
         response = await self._get(
             endpoint,
             params=params,
             headers=headers,
             require_auth=require_auth,
         )
+        # Handle empty response body (V1 returns HTTP 200 with empty body for nonexistent resources)
+        if not response.content or response.content.strip() == b"":
+            raise TickTickNotFoundError(
+                f"Resource not found (empty response)",
+                endpoint=endpoint,
+                api_version=self.api_version.value,
+            )
         return response.json()
 
     async def _post_json(

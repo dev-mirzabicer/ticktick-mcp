@@ -8,13 +8,16 @@ Authentication Flow:
     1. POST /api/v2/user/signon with credentials
     2. Receive token and session cookies
     3. Use token in Authorization header and cookies in subsequent requests
+
+Based on working implementation from pyticktick:
+https://github.com/pretzelm/pyticktick
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import secrets
+import os
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -23,13 +26,27 @@ import httpx
 
 from ticktick_mcp.constants import (
     DEFAULT_TIMEOUT,
-    DEFAULT_USER_AGENT,
     TICKTICK_API_BASE_V2,
-    X_DEVICE_TEMPLATE,
 )
 from ticktick_mcp.exceptions import TickTickSessionError
 
 logger = logging.getLogger(__name__)
+
+
+def _generate_object_id() -> str:
+    """Generate a MongoDB-style ObjectId (24 hex characters).
+
+    Format: 4-byte timestamp + 5-byte random + 3-byte counter
+    This mimics bson.ObjectId() without requiring the bson dependency.
+    """
+    # 4 bytes: timestamp (seconds since epoch)
+    timestamp = int(time.time()).to_bytes(4, "big")
+    # 5 bytes: random value (machine id + process id equivalent)
+    random_bytes = os.urandom(5)
+    # 3 bytes: counter (random for simplicity)
+    counter = os.urandom(3)
+
+    return (timestamp + random_bytes + counter).hex()
 
 
 @dataclass
@@ -107,15 +124,18 @@ class SessionHandler:
         cookies = session.cookies
     """
 
+    # Minimal headers that work (based on pyticktick)
+    # Keep it simple - don't over-engineer with browser-exact headers
+    DEFAULT_USER_AGENT = "Mozilla/5.0 (rv:145.0) Firefox/145.0"
+
     def __init__(
         self,
         device_id: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
-        user_agent: str = DEFAULT_USER_AGENT,
     ) -> None:
-        self.device_id = device_id or secrets.token_hex(12)
+        # Use proper ObjectId format (24 hex chars) like pyticktick does
+        self.device_id = device_id or _generate_object_id()
         self.timeout = timeout
-        self.user_agent = user_agent
 
         self._session: SessionToken | None = None
 
@@ -149,17 +169,29 @@ class SessionHandler:
         return None
 
     def _get_x_device_header(self) -> str:
-        """Get the x-device header JSON string."""
-        header = X_DEVICE_TEMPLATE.copy()
-        header["id"] = self.device_id
-        return json.dumps(header)
+        """Get the x-device header JSON string.
+
+        Uses minimal format that works (based on pyticktick).
+        Only 3 fields: platform, version, id
+        """
+        import json
+
+        return json.dumps({
+            "platform": "web",
+            "version": 6430,
+            "id": self.device_id,
+        })
 
     def _get_headers(self) -> dict[str, str]:
-        """Get headers for authentication requests."""
+        """Get headers for authentication requests.
+
+        Minimal headers - don't over-engineer with browser-exact headers.
+        The API just needs User-Agent and X-Device.
+        Content-Type is added automatically by httpx when using json=.
+        """
         return {
-            "Content-Type": "application/json",
-            "User-Agent": self.user_agent,
-            "x-device": self._get_x_device_header(),
+            "User-Agent": self.DEFAULT_USER_AGENT,
+            "X-Device": self._get_x_device_header(),
         }
 
     async def authenticate(
@@ -256,12 +288,15 @@ class SessionHandler:
         Raises:
             TickTickSessionError: If 2FA verification fails
         """
-        url = f"{TICKTICK_API_BASE_V2}/user/signon/totp"
+        # Use the MFA endpoint that pyticktick uses
+        url = f"{TICKTICK_API_BASE_V2}/user/sign/mfa/code/verify"
         payload = {
-            "authId": auth_id,
             "code": totp_code,
+            "method": "app",
         }
         headers = self._get_headers()
+        # Add the verify ID header as pyticktick does
+        headers["x-verify-id"] = auth_id
 
         logger.debug("Completing 2FA authentication")
 

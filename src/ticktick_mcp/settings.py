@@ -9,14 +9,29 @@ Both V1 (OAuth2) and V2 (Session) credentials are REQUIRED for full functionalit
 
 from __future__ import annotations
 
-import secrets
+import os
+import time
 from functools import cached_property
 from typing import Any
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ticktick_mcp.constants import DEFAULT_TIMEOUT, OAUTH_SCOPES, X_DEVICE_TEMPLATE
+from ticktick_mcp.constants import DEFAULT_TIMEOUT, OAUTH_SCOPES
+
+
+def _generate_object_id() -> str:
+    """Generate a MongoDB-style ObjectId (24 hex characters).
+
+    Format: 4-byte timestamp + 5-byte random + 3-byte counter
+    This mimics bson.ObjectId() without requiring the bson dependency.
+    """
+    timestamp = int(time.time()).to_bytes(4, "big")
+    random_bytes = os.urandom(5)
+    counter = os.urandom(3)
+    return (timestamp + random_bytes + counter).hex()
+
+
 from ticktick_mcp.exceptions import TickTickConfigurationError
 
 
@@ -105,8 +120,8 @@ class TickTickSettings(BaseSettings):
         description="Default timezone for date operations",
     )
     device_id: str = Field(
-        default_factory=lambda: secrets.token_hex(12),
-        description="Unique device identifier for V2 API",
+        default_factory=_generate_object_id,
+        description="Unique device identifier for V2 API (MongoDB-style ObjectId)",
     )
 
     # =========================================================================
@@ -212,10 +227,16 @@ class TickTickSettings(BaseSettings):
 
     @cached_property
     def x_device_header(self) -> dict[str, Any]:
-        """Get the x-device header for V2 API."""
-        header = X_DEVICE_TEMPLATE.copy()
-        header["id"] = self.device_id
-        return header
+        """Get the x-device header for V2 API.
+
+        Uses minimal format (based on pyticktick):
+        Only 3 fields: platform, version, id
+        """
+        return {
+            "platform": "web",
+            "version": 6430,
+            "id": self.device_id,
+        }
 
     def get_v1_access_token(self) -> str | None:
         """Get the V1 access token value if available."""
