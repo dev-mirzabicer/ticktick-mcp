@@ -60,7 +60,7 @@ See the README for full documentation.
 """
 
 __version__ = "0.1.0"
-__author__ = "TickTick SDK Contributors"
+__author__ = "dev-mirzabicer"
 
 # Main client - primary entry point for library usage
 from ticktick_sdk.client import TickTickClient

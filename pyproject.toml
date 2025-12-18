@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "TickTick SDK Contributors" }
+    { name = "dev-mirzabicer" }
 ]
 keywords = [
     "ticktick",
