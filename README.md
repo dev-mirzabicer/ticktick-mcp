@@ -714,19 +714,67 @@ async with TickTickClient.from_settings() as client:
 
 The MCP server enables AI assistants (like Claude) to manage your TickTick tasks through natural language.
 
-### Running the Server
+### Option 1: Claude Code (Recommended)
+
+The easiest way to use the MCP server with [Claude Code](https://claude.ai/claude-code):
 
 ```bash
-# Make sure your .env is configured
-ticktick-sdk
+# Add the server with your credentials
+claude mcp add ticktick \
+  --transport stdio \
+  --env TICKTICK_CLIENT_ID=your_client_id \
+  --env TICKTICK_CLIENT_SECRET=your_client_secret \
+  --env TICKTICK_ACCESS_TOKEN=your_access_token \
+  --env TICKTICK_USERNAME=your_email \
+  --env TICKTICK_PASSWORD=your_password \
+  -- ticktick-sdk
 ```
 
-### Claude Desktop Integration
+Or if installed from source:
+
+```bash
+claude mcp add ticktick \
+  --transport stdio \
+  --env TICKTICK_CLIENT_ID=your_client_id \
+  --env TICKTICK_CLIENT_SECRET=your_client_secret \
+  --env TICKTICK_ACCESS_TOKEN=your_access_token \
+  --env TICKTICK_USERNAME=your_email \
+  --env TICKTICK_PASSWORD=your_password \
+  -- /path/to/ticktick-sdk/.venv/bin/ticktick-sdk
+```
+
+Verify it's working:
+
+```bash
+claude mcp list        # See all configured servers
+/mcp                   # Within Claude Code, check server status
+```
+
+### Option 2: Claude Desktop
 
 Add to your Claude Desktop config:
 
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "ticktick": {
+      "command": "ticktick-sdk",
+      "env": {
+        "TICKTICK_CLIENT_ID": "your_client_id",
+        "TICKTICK_CLIENT_SECRET": "your_client_secret",
+        "TICKTICK_ACCESS_TOKEN": "your_access_token",
+        "TICKTICK_USERNAME": "your_email",
+        "TICKTICK_PASSWORD": "your_password"
+      }
+    }
+  }
+}
+```
+
+Or if using a virtual environment:
 
 ```json
 {
@@ -746,6 +794,13 @@ Add to your Claude Desktop config:
 }
 ```
 
+### Option 3: Run Standalone
+
+```bash
+# Make sure your .env is configured, then run:
+ticktick-sdk
+```
+
 ### Example Conversations
 
 Once configured, you can ask Claude things like:
@@ -758,7 +813,7 @@ Once configured, you can ask Claude things like:
 - "Check in my meditation habit for today"
 - "Create a new habit to drink 8 glasses of water daily"
 
-### Available MCP Tools (46 Total)
+### Available MCP Tools (45 Total)
 
 #### Task Tools
 | Tool | Description |
