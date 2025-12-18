@@ -309,6 +309,57 @@ class CompletedTasksInput(BaseMCPInput):
     )
 
 
+class AbandonedTasksInput(BaseMCPInput):
+    """Input for listing abandoned (won't do) tasks."""
+
+    days: int = Field(
+        default=7,
+        description="Number of days to look back",
+        ge=1,
+        le=90,
+    )
+    limit: int = Field(
+        default=50,
+        description="Maximum number of tasks to return",
+        ge=1,
+        le=200,
+    )
+    response_format: ResponseFormat = Field(
+        default=ResponseFormat.MARKDOWN,
+        description="Output format",
+    )
+
+
+class DeletedTasksInput(BaseMCPInput):
+    """Input for listing deleted tasks (in trash)."""
+
+    limit: int = Field(
+        default=50,
+        description="Maximum number of tasks to return",
+        ge=1,
+        le=500,
+    )
+    response_format: ResponseFormat = Field(
+        default=ResponseFormat.MARKDOWN,
+        description="Output format",
+    )
+
+
+class TaskUnparentInput(BaseMCPInput):
+    """Input for removing a task from its parent (unparenting a subtask)."""
+
+    task_id: str = Field(
+        ...,
+        description="Task identifier to unparent",
+        pattern=r"^[a-f0-9]{24}$",
+    )
+    project_id: str = Field(
+        ...,
+        description="Project ID containing the task",
+        pattern=r"^(inbox\d+|[a-f0-9]{24})$",
+    )
+
+
 # =============================================================================
 # Project Input Models
 # =============================================================================
@@ -377,6 +428,35 @@ class ProjectDeleteInput(BaseMCPInput):
     )
 
 
+class ProjectUpdateInput(BaseMCPInput):
+    """Input for updating a project."""
+
+    project_id: str = Field(
+        ...,
+        description="Project identifier to update",
+        pattern=r"^[a-f0-9]{24}$",
+    )
+    name: Optional[str] = Field(
+        default=None,
+        description="New project name",
+        min_length=1,
+        max_length=100,
+    )
+    color: Optional[str] = Field(
+        default=None,
+        description="New hex color code (e.g., '#F18181')",
+        pattern=r"^#[0-9A-Fa-f]{6}$",
+    )
+    folder_id: Optional[str] = Field(
+        default=None,
+        description="New folder ID (use 'NONE' to remove from folder)",
+    )
+    response_format: ResponseFormat = Field(
+        default=ResponseFormat.MARKDOWN,
+        description="Output format",
+    )
+
+
 # =============================================================================
 # Folder Input Models
 # =============================================================================
@@ -404,6 +484,26 @@ class FolderDeleteInput(BaseMCPInput):
         ...,
         description="Folder identifier to delete",
         pattern=r"^[a-f0-9]{24}$",
+    )
+
+
+class FolderRenameInput(BaseMCPInput):
+    """Input for renaming a folder (project group)."""
+
+    folder_id: str = Field(
+        ...,
+        description="Folder identifier to rename",
+        pattern=r"^[a-f0-9]{24}$",
+    )
+    name: str = Field(
+        ...,
+        description="New folder name",
+        min_length=1,
+        max_length=100,
+    )
+    response_format: ResponseFormat = Field(
+        default=ResponseFormat.MARKDOWN,
+        description="Output format",
     )
 
 
@@ -481,6 +581,30 @@ class TagMergeInput(BaseMCPInput):
     )
 
 
+class TagUpdateInput(BaseMCPInput):
+    """Input for updating a tag's properties."""
+
+    name: str = Field(
+        ...,
+        description="Tag name (lowercase identifier) to update",
+        min_length=1,
+        max_length=50,
+    )
+    color: Optional[str] = Field(
+        default=None,
+        description="New hex color code (e.g., '#F18181')",
+        pattern=r"^#[0-9A-Fa-f]{6}$",
+    )
+    parent: Optional[str] = Field(
+        default=None,
+        description="New parent tag name (or empty string to remove parent)",
+    )
+    response_format: ResponseFormat = Field(
+        default=ResponseFormat.MARKDOWN,
+        description="Output format",
+    )
+
+
 # =============================================================================
 # Focus/Pomodoro Input Models
 # =============================================================================
@@ -542,3 +666,27 @@ class SearchInput(BaseMCPInput):
         if not v.strip():
             raise ValueError("Query cannot be empty or whitespace only")
         return v.strip()
+
+
+# =============================================================================
+# Habit Input Models
+# =============================================================================
+
+
+class HabitCheckinsInput(BaseMCPInput):
+    """Input for querying habit check-in data."""
+
+    habit_ids: List[str] = Field(
+        ...,
+        description="List of habit IDs to query. Get habit IDs from ticktick_sync.",
+        min_length=1,
+    )
+    after_timestamp: int = Field(
+        default=0,
+        description="Unix timestamp to get check-ins after (0 for all)",
+        ge=0,
+    )
+    response_format: ResponseFormat = Field(
+        default=ResponseFormat.JSON,
+        description="Output format (JSON recommended for habit data)",
+    )

@@ -111,19 +111,26 @@ from ticktick_mcp.tools.inputs import (
     TaskDeleteInput,
     TaskMoveInput,
     TaskParentInput,
+    TaskUnparentInput,
     TaskListInput,
     CompletedTasksInput,
+    AbandonedTasksInput,
+    DeletedTasksInput,
     ProjectCreateInput,
     ProjectGetInput,
     ProjectDeleteInput,
+    ProjectUpdateInput,
     FolderCreateInput,
     FolderDeleteInput,
+    FolderRenameInput,
     TagCreateInput,
     TagDeleteInput,
     TagRenameInput,
     TagMergeInput,
+    TagUpdateInput,
     FocusStatsInput,
     SearchInput,
+    HabitCheckinsInput,
 )
 from ticktick_mcp.tools.formatting import (
     format_task_markdown,
@@ -808,6 +815,43 @@ async def ticktick_make_subtask(params: TaskParentInput, ctx: Context) -> str:
 
 
 @mcp.tool(
+    name="ticktick_unparent_subtask",
+    annotations={
+        "title": "Unparent Subtask",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_unparent_subtask(params: TaskUnparentInput, ctx: Context) -> str:
+    """
+    Remove a task from its parent (make it a top-level task).
+
+    Removes the parent-child relationship, turning the subtask back into
+    a regular top-level task.
+
+    Args:
+        params: Unparent parameters:
+            - task_id (str): Subtask to unparent (required)
+            - project_id (str): Project containing the task (required)
+
+    Returns:
+        Success confirmation or error message.
+
+    Raises:
+        Error if the task is not a subtask (has no parent).
+    """
+    try:
+        client = get_client(ctx)
+        await client.unparent_subtask(params.task_id, params.project_id)
+        return success_message(f"Task `{params.task_id}` is now a top-level task.")
+
+    except Exception as e:
+        return handle_error(e, "unparent_subtask")
+
+
+@mcp.tool(
     name="ticktick_completed_tasks",
     annotations={
         "title": "Get Completed Tasks",
@@ -845,6 +889,85 @@ async def ticktick_completed_tasks(params: CompletedTasksInput, ctx: Context) ->
 
     except Exception as e:
         return handle_error(e, "completed_tasks")
+
+
+@mcp.tool(
+    name="ticktick_abandoned_tasks",
+    annotations={
+        "title": "Get Abandoned Tasks",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_abandoned_tasks(params: AbandonedTasksInput, ctx: Context) -> str:
+    """
+    Get recently abandoned ("won't do") tasks.
+
+    Retrieves tasks that were marked as abandoned/won't do within the
+    specified time period. Useful for reviewing decisions and deprioritized work.
+
+    Args:
+        params: Query parameters:
+            - days (int): Number of days to look back (default 7)
+            - limit (int): Maximum results (default 50)
+
+    Returns:
+        Formatted list of abandoned tasks or error message.
+    """
+    try:
+        client = get_client(ctx)
+        tasks = await client.get_abandoned_tasks(days=params.days, limit=params.limit)
+
+        title = f"Abandoned Tasks (Last {params.days} Days)"
+
+        if params.response_format == ResponseFormat.MARKDOWN:
+            return format_tasks_markdown(tasks, title)
+        else:
+            return json.dumps(format_tasks_json(tasks), indent=2)
+
+    except Exception as e:
+        return handle_error(e, "abandoned_tasks")
+
+
+@mcp.tool(
+    name="ticktick_deleted_tasks",
+    annotations={
+        "title": "Get Deleted Tasks",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_deleted_tasks(params: DeletedTasksInput, ctx: Context) -> str:
+    """
+    Get deleted tasks (in trash).
+
+    Retrieves tasks that have been deleted but are still in the trash.
+    Tasks in trash can potentially be restored.
+
+    Args:
+        params: Query parameters:
+            - limit (int): Maximum results (default 50)
+
+    Returns:
+        Formatted list of deleted tasks or error message.
+    """
+    try:
+        client = get_client(ctx)
+        tasks = await client.get_deleted_tasks(limit=params.limit)
+
+        title = "Deleted Tasks (Trash)"
+
+        if params.response_format == ResponseFormat.MARKDOWN:
+            return format_tasks_markdown(tasks, title)
+        else:
+            return json.dumps(format_tasks_json(tasks), indent=2)
+
+    except Exception as e:
+        return handle_error(e, "deleted_tasks")
 
 
 @mcp.tool(
@@ -1031,6 +1154,56 @@ async def ticktick_create_project(params: ProjectCreateInput, ctx: Context) -> s
 
 
 @mcp.tool(
+    name="ticktick_update_project",
+    annotations={
+        "title": "Update Project",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_update_project(params: ProjectUpdateInput, ctx: Context) -> str:
+    """
+    Update a project's properties.
+
+    Updates project name, color, or folder assignment.
+
+    Args:
+        params: Update parameters:
+            - project_id (str): Project to update (required)
+            - name (str): New project name
+            - color (str): New hex color code (e.g., '#F18181')
+            - folder_id (str): New folder ID (use 'NONE' to remove from folder)
+
+    Returns:
+        Formatted updated project or error message.
+    """
+    try:
+        client = get_client(ctx)
+
+        # Handle "NONE" to remove from folder
+        folder_id = params.folder_id
+        if folder_id and folder_id.upper() == "NONE":
+            folder_id = ""  # Empty string removes from folder
+
+        project = await client.update_project(
+            project_id=params.project_id,
+            name=params.name,
+            color=params.color,
+            folder_id=folder_id,
+        )
+
+        if params.response_format == ResponseFormat.MARKDOWN:
+            return f"# Project Updated\n\n{format_project_markdown(project)}"
+        else:
+            return json.dumps({"success": True, "project": format_project_json(project)}, indent=2)
+
+    except Exception as e:
+        return handle_error(e, "update_project")
+
+
+@mcp.tool(
     name="ticktick_delete_project",
     annotations={
         "title": "Delete Project",
@@ -1132,6 +1305,41 @@ async def ticktick_create_folder(params: FolderCreateInput, ctx: Context) -> str
 
     except Exception as e:
         return handle_error(e, "create_folder")
+
+
+@mcp.tool(
+    name="ticktick_rename_folder",
+    annotations={
+        "title": "Rename Folder",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_rename_folder(params: FolderRenameInput, ctx: Context) -> str:
+    """
+    Rename a folder.
+
+    Args:
+        params: Rename parameters:
+            - folder_id (str): Folder to rename (required)
+            - name (str): New folder name (required)
+
+    Returns:
+        Formatted updated folder or error message.
+    """
+    try:
+        client = get_client(ctx)
+        folder = await client.rename_folder(params.folder_id, params.name)
+
+        if params.response_format == ResponseFormat.MARKDOWN:
+            return f"# Folder Renamed\n\n- **{folder.name}** (`{folder.id}`)"
+        else:
+            return json.dumps({"success": True, "folder": {"id": folder.id, "name": folder.name}}, indent=2)
+
+    except Exception as e:
+        return handle_error(e, "rename_folder")
 
 
 @mcp.tool(
@@ -1240,6 +1448,50 @@ async def ticktick_create_tag(params: TagCreateInput, ctx: Context) -> str:
 
     except Exception as e:
         return handle_error(e, "create_tag")
+
+
+@mcp.tool(
+    name="ticktick_update_tag",
+    annotations={
+        "title": "Update Tag",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_update_tag(params: TagUpdateInput, ctx: Context) -> str:
+    """
+    Update a tag's properties.
+
+    Updates tag color or parent.
+
+    Args:
+        params: Update parameters:
+            - name (str): Tag name to update (required)
+            - color (str): New hex color code (e.g., '#F18181')
+            - parent (str): New parent tag name (empty string to remove parent)
+
+    Returns:
+        Formatted updated tag or error message.
+    """
+    try:
+        client = get_client(ctx)
+
+        # Handle empty string as None to remove parent
+        parent = params.parent
+        if parent == "":
+            parent = None
+
+        tag = await client.update_tag(params.name, color=params.color, parent=parent)
+
+        if params.response_format == ResponseFormat.MARKDOWN:
+            return f"# Tag Updated\n\n{format_tag_markdown(tag)}"
+        else:
+            return json.dumps({"success": True, "tag": format_tag_json(tag)}, indent=2)
+
+    except Exception as e:
+        return handle_error(e, "update_tag")
 
 
 @mcp.tool(
@@ -1466,6 +1718,41 @@ async def ticktick_get_statistics(ctx: Context, response_format: ResponseFormat 
         return handle_error(e, "get_statistics")
 
 
+@mcp.tool(
+    name="ticktick_get_preferences",
+    annotations={
+        "title": "Get User Preferences",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_get_preferences(ctx: Context) -> str:
+    """
+    Get user preferences and settings.
+
+    Retrieves user-configurable settings including:
+    - timeZone: User's timezone
+    - weekStartDay: First day of week (0=Sunday, 1=Monday)
+    - startOfDay: Hour when day starts
+    - dateFormat: Date display format
+    - timeFormat: Time display format (12h/24h)
+    - defaultReminder: Default reminder setting
+    - And other user preferences
+
+    Returns:
+        JSON object with all user preferences.
+    """
+    try:
+        client = get_client(ctx)
+        preferences = await client.get_preferences()
+        return json.dumps(preferences, indent=2)
+
+    except Exception as e:
+        return handle_error(e, "get_preferences")
+
+
 # =============================================================================
 # Focus Tools
 # =============================================================================
@@ -1574,6 +1861,49 @@ async def ticktick_focus_by_tag(params: FocusStatsInput, ctx: Context) -> str:
 
     except Exception as e:
         return handle_error(e, "focus_by_tag")
+
+
+# =============================================================================
+# Habit Tools
+# =============================================================================
+
+
+@mcp.tool(
+    name="ticktick_habit_checkins",
+    annotations={
+        "title": "Get Habit Check-ins",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_habit_checkins(params: HabitCheckinsInput, ctx: Context) -> str:
+    """
+    Get habit check-in data.
+
+    Retrieves check-in records for the specified habits.
+
+    NOTE: To get habit IDs, use ticktick_sync and look at the 'habits' field.
+
+    Args:
+        params: Query parameters:
+            - habit_ids (list[str]): List of habit IDs to query (required)
+            - after_timestamp (int): Unix timestamp to get check-ins after (0 for all)
+
+    Returns:
+        JSON object with habit check-in data.
+    """
+    try:
+        client = get_client(ctx)
+        data = await client.get_habit_checkins(
+            habit_ids=params.habit_ids,
+            after_timestamp=params.after_timestamp,
+        )
+        return json.dumps(data, indent=2)
+
+    except Exception as e:
+        return handle_error(e, "habit_checkins")
 
 
 # =============================================================================
