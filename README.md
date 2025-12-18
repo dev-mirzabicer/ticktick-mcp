@@ -68,7 +68,7 @@ The official V1 API is limited. Most of TickTick's power features (tags, habits,
 
 Based on analysis of the actual source code of available TickTick Python libraries:
 
-| Feature | ticktick-mcp | pyticktick | ticktick-py | tickthon | ticktick-python |
+| Feature | ticktick-mcp | [pyticktick](https://github.com/sebpretzer/pyticktick) | [ticktick-py](https://github.com/lazeroffmichael/ticktick-py) | [tickthon](https://github.com/anggelomos/tickthon) | [ticktick-python](https://github.com/glasslion/ticktick-python) |
 |---------|:------------:|:----------:|:-----------:|:--------:|:---------------:|
 | **I/O Model** | Async | Async | Sync | Sync | Sync |
 | **Type System** | Pydantic V2 | Pydantic V2 | Dicts | attrs | addict |
