@@ -1648,26 +1648,58 @@ class UnifiedTickTickAPI:
             value: Check-in value (1.0 for boolean habits)
 
         Returns:
-            Updated habit
+            Updated habit with preserved name and updated counters
 
         Raises:
             TickTickNotFoundError: If habit not found
         """
         self._ensure_initialized()
 
-        # Get current habit to know current stats
-        habit = await self.get_habit(habit_id)
+        # Get current habit to know current stats AND preserve its data
+        # (The API may return habits with null names after update operations)
+        original_habit = await self.get_habit(habit_id)
 
-        response = await self._v2_client.checkin_habit(  # type: ignore
+        # Use update_habit directly instead of checkin_habit to preserve the name
+        # (The API nullifies fields that aren't sent in update operations)
+        response = await self._v2_client.update_habit(  # type: ignore
             habit_id=habit_id,
-            value=value,
-            current_total=habit.total_checkins,
-            current_streak=habit.current_streak,
+            name=original_habit.name,  # Preserve name!
+            total_checkins=original_habit.total_checkins + int(value),
+            current_streak=original_habit.current_streak + 1,
         )
 
         _check_batch_response_errors(response, "checkin_habit", [habit_id])
 
-        return await self.get_habit(habit_id)
+        # Return a habit with updated counters but preserved original data
+        # This avoids the issue where the API returns null for name after updates
+        return Habit(
+            id=original_habit.id,
+            name=original_habit.name,
+            icon=original_habit.icon,
+            color=original_habit.color,
+            sort_order=original_habit.sort_order,
+            status=original_habit.status,
+            encouragement=original_habit.encouragement,
+            total_checkins=original_habit.total_checkins + int(value),
+            created_time=original_habit.created_time,
+            modified_time=original_habit.modified_time,
+            archived_time=original_habit.archived_time,
+            habit_type=original_habit.habit_type,
+            goal=original_habit.goal,
+            step=original_habit.step,
+            unit=original_habit.unit,
+            etag=original_habit.etag,
+            repeat_rule=original_habit.repeat_rule,
+            reminders=original_habit.reminders,
+            record_enable=original_habit.record_enable,
+            section_id=original_habit.section_id,
+            target_days=original_habit.target_days,
+            target_start_date=original_habit.target_start_date,
+            completed_cycles=original_habit.completed_cycles,
+            ex_dates=original_habit.ex_dates,
+            current_streak=original_habit.current_streak + 1,
+            style=original_habit.style,
+        )
 
     async def archive_habit(self, habit_id: str) -> Habit:
         """
@@ -1679,20 +1711,56 @@ class UnifiedTickTickAPI:
             habit_id: Habit ID
 
         Returns:
-            Updated habit
+            Updated habit with preserved data and archived status
 
         Raises:
             TickTickNotFoundError: If habit not found
         """
+        from datetime import datetime
+
         self._ensure_initialized()
 
-        # Verify habit exists
-        await self.get_habit(habit_id)
+        # Get original habit data to preserve
+        original_habit = await self.get_habit(habit_id)
 
-        response = await self._v2_client.archive_habit(habit_id)  # type: ignore
+        # Use update_habit directly instead of archive_habit to preserve the name
+        # (The API nullifies fields that aren't sent in update operations)
+        response = await self._v2_client.update_habit(  # type: ignore
+            habit_id=habit_id,
+            name=original_habit.name,  # Preserve name!
+            status=2,  # Archived
+        )
         _check_batch_response_errors(response, "archive_habit", [habit_id])
 
-        return await self.get_habit(habit_id)
+        # Return habit with preserved data and updated status
+        return Habit(
+            id=original_habit.id,
+            name=original_habit.name,
+            icon=original_habit.icon,
+            color=original_habit.color,
+            sort_order=original_habit.sort_order,
+            status=2,  # Archived status
+            encouragement=original_habit.encouragement,
+            total_checkins=original_habit.total_checkins,
+            created_time=original_habit.created_time,
+            modified_time=datetime.now(),
+            archived_time=datetime.now(),
+            habit_type=original_habit.habit_type,
+            goal=original_habit.goal,
+            step=original_habit.step,
+            unit=original_habit.unit,
+            etag=original_habit.etag,
+            repeat_rule=original_habit.repeat_rule,
+            reminders=original_habit.reminders,
+            record_enable=original_habit.record_enable,
+            section_id=original_habit.section_id,
+            target_days=original_habit.target_days,
+            target_start_date=original_habit.target_start_date,
+            completed_cycles=original_habit.completed_cycles,
+            ex_dates=original_habit.ex_dates,
+            current_streak=original_habit.current_streak,
+            style=original_habit.style,
+        )
 
     async def unarchive_habit(self, habit_id: str) -> Habit:
         """
@@ -1704,20 +1772,56 @@ class UnifiedTickTickAPI:
             habit_id: Habit ID
 
         Returns:
-            Updated habit
+            Updated habit with preserved data and active status
 
         Raises:
             TickTickNotFoundError: If habit not found
         """
+        from datetime import datetime
+
         self._ensure_initialized()
 
-        # Verify habit exists
-        await self.get_habit(habit_id)
+        # Get original habit data to preserve
+        original_habit = await self.get_habit(habit_id)
 
-        response = await self._v2_client.unarchive_habit(habit_id)  # type: ignore
+        # Use update_habit directly instead of unarchive_habit to preserve the name
+        # (The API nullifies fields that aren't sent in update operations)
+        response = await self._v2_client.update_habit(  # type: ignore
+            habit_id=habit_id,
+            name=original_habit.name,  # Preserve name!
+            status=0,  # Active
+        )
         _check_batch_response_errors(response, "unarchive_habit", [habit_id])
 
-        return await self.get_habit(habit_id)
+        # Return habit with preserved data and active status
+        return Habit(
+            id=original_habit.id,
+            name=original_habit.name,
+            icon=original_habit.icon,
+            color=original_habit.color,
+            sort_order=original_habit.sort_order,
+            status=0,  # Active status
+            encouragement=original_habit.encouragement,
+            total_checkins=original_habit.total_checkins,
+            created_time=original_habit.created_time,
+            modified_time=datetime.now(),
+            archived_time=None,  # Clear archived time
+            habit_type=original_habit.habit_type,
+            goal=original_habit.goal,
+            step=original_habit.step,
+            unit=original_habit.unit,
+            etag=original_habit.etag,
+            repeat_rule=original_habit.repeat_rule,
+            reminders=original_habit.reminders,
+            record_enable=original_habit.record_enable,
+            section_id=original_habit.section_id,
+            target_days=original_habit.target_days,
+            target_start_date=original_habit.target_start_date,
+            completed_cycles=original_habit.completed_cycles,
+            ex_dates=original_habit.ex_dates,
+            current_streak=original_habit.current_streak,
+            style=original_habit.style,
+        )
 
     async def get_habit_checkins(
         self,
