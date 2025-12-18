@@ -673,17 +673,234 @@ class SearchInput(BaseMCPInput):
 # =============================================================================
 
 
+class HabitListInput(BaseMCPInput):
+    """Input for listing all habits."""
+
+    include_archived: bool = Field(
+        default=False,
+        description="Include archived habits in the list",
+    )
+    response_format: ResponseFormat = Field(
+        default=ResponseFormat.MARKDOWN,
+        description="Output format",
+    )
+
+
+class HabitGetInput(BaseMCPInput):
+    """Input for getting a specific habit."""
+
+    habit_id: str = Field(
+        ...,
+        description="Habit ID (24-character hex string)",
+        pattern=r"^[a-f0-9]{24}$",
+    )
+    response_format: ResponseFormat = Field(
+        default=ResponseFormat.MARKDOWN,
+        description="Output format",
+    )
+
+
+class HabitCreateInput(BaseMCPInput):
+    """Input for creating a new habit."""
+
+    name: str = Field(
+        ...,
+        description="Habit name (e.g., 'Exercise', 'Read 30 minutes')",
+        min_length=1,
+        max_length=100,
+    )
+    habit_type: str = Field(
+        default="Boolean",
+        description="Habit type: 'Boolean' for yes/no, 'Real' for numeric counter",
+        pattern=r"^(Boolean|Real)$",
+    )
+    goal: float = Field(
+        default=1.0,
+        description="Target goal value (1.0 for boolean, custom for numeric)",
+        ge=0.1,
+        le=10000,
+    )
+    step: float = Field(
+        default=1.0,
+        description="Increment step for numeric habits (e.g., 1.0 for +1 button)",
+        ge=0.1,
+        le=1000,
+    )
+    unit: str = Field(
+        default="Count",
+        description="Unit of measurement (e.g., 'Count', 'Minutes', 'Pages')",
+        max_length=20,
+    )
+    color: Optional[str] = Field(
+        default=None,
+        description="Hex color code (e.g., '#97E38B'). Defaults to green.",
+        pattern=r"^#[0-9A-Fa-f]{6}$",
+    )
+    section_id: Optional[str] = Field(
+        default=None,
+        description="Time-of-day section ID (_morning, _afternoon, _night). Get from ticktick_habit_sections.",
+        pattern=r"^[a-f0-9]{24}$",
+    )
+    repeat_rule: str = Field(
+        default="RRULE:FREQ=WEEKLY;BYDAY=SU,MO,TU,WE,TH,FR,SA",
+        description="RRULE recurrence pattern. Daily: 'RRULE:FREQ=WEEKLY;BYDAY=SU,MO,TU,WE,TH,FR,SA'. 5x/week: 'RRULE:FREQ=WEEKLY;TT_TIMES=5'",
+    )
+    reminders: Optional[List[str]] = Field(
+        default=None,
+        description="List of reminder times in HH:MM format (e.g., ['09:00', '21:00'])",
+        max_length=5,
+    )
+    target_days: int = Field(
+        default=0,
+        description="Goal in days (e.g., 100 for '100-day challenge'). 0 = no target.",
+        ge=0,
+        le=1000,
+    )
+    encouragement: str = Field(
+        default="",
+        description="Motivational message to display",
+        max_length=200,
+    )
+    response_format: ResponseFormat = Field(
+        default=ResponseFormat.MARKDOWN,
+        description="Output format",
+    )
+
+    @field_validator("reminders")
+    @classmethod
+    def validate_reminders(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        import re
+        time_pattern = re.compile(r"^([01]?[0-9]|2[0-3]):[0-5][0-9]$")
+        for reminder in v:
+            if not time_pattern.match(reminder):
+                raise ValueError(f"Invalid time format: {reminder}. Use HH:MM format.")
+        return v
+
+
+class HabitUpdateInput(BaseMCPInput):
+    """Input for updating a habit."""
+
+    habit_id: str = Field(
+        ...,
+        description="Habit ID to update",
+        pattern=r"^[a-f0-9]{24}$",
+    )
+    name: Optional[str] = Field(
+        default=None,
+        description="New habit name",
+        min_length=1,
+        max_length=100,
+    )
+    goal: Optional[float] = Field(
+        default=None,
+        description="New target goal value",
+        ge=0.1,
+        le=10000,
+    )
+    step: Optional[float] = Field(
+        default=None,
+        description="New increment step for numeric habits",
+        ge=0.1,
+        le=1000,
+    )
+    unit: Optional[str] = Field(
+        default=None,
+        description="New unit of measurement",
+        max_length=20,
+    )
+    color: Optional[str] = Field(
+        default=None,
+        description="New hex color code",
+        pattern=r"^#[0-9A-Fa-f]{6}$",
+    )
+    section_id: Optional[str] = Field(
+        default=None,
+        description="New time-of-day section ID",
+        pattern=r"^[a-f0-9]{24}$",
+    )
+    repeat_rule: Optional[str] = Field(
+        default=None,
+        description="New RRULE recurrence pattern",
+    )
+    reminders: Optional[List[str]] = Field(
+        default=None,
+        description="New list of reminder times in HH:MM format",
+        max_length=5,
+    )
+    target_days: Optional[int] = Field(
+        default=None,
+        description="New goal in days",
+        ge=0,
+        le=1000,
+    )
+    encouragement: Optional[str] = Field(
+        default=None,
+        description="New motivational message",
+        max_length=200,
+    )
+    response_format: ResponseFormat = Field(
+        default=ResponseFormat.MARKDOWN,
+        description="Output format",
+    )
+
+
+class HabitDeleteInput(BaseMCPInput):
+    """Input for deleting a habit."""
+
+    habit_id: str = Field(
+        ...,
+        description="Habit ID to delete",
+        pattern=r"^[a-f0-9]{24}$",
+    )
+
+
+class HabitCheckinInput(BaseMCPInput):
+    """Input for checking in a habit (completing for today)."""
+
+    habit_id: str = Field(
+        ...,
+        description="Habit ID to check in",
+        pattern=r"^[a-f0-9]{24}$",
+    )
+    value: float = Field(
+        default=1.0,
+        description="Check-in value. 1.0 for boolean habits, custom for numeric.",
+        ge=0.1,
+        le=10000,
+    )
+    response_format: ResponseFormat = Field(
+        default=ResponseFormat.MARKDOWN,
+        description="Output format",
+    )
+
+
+class HabitArchiveInput(BaseMCPInput):
+    """Input for archiving/unarchiving a habit."""
+
+    habit_id: str = Field(
+        ...,
+        description="Habit ID to archive/unarchive",
+        pattern=r"^[a-f0-9]{24}$",
+    )
+    response_format: ResponseFormat = Field(
+        default=ResponseFormat.MARKDOWN,
+        description="Output format",
+    )
+
+
 class HabitCheckinsInput(BaseMCPInput):
-    """Input for querying habit check-in data."""
+    """Input for querying habit check-in history."""
 
     habit_ids: List[str] = Field(
         ...,
-        description="List of habit IDs to query. Get habit IDs from ticktick_sync.",
+        description="List of habit IDs to query. Get habit IDs from ticktick_habits.",
         min_length=1,
     )
-    after_timestamp: int = Field(
+    after_stamp: int = Field(
         default=0,
-        description="Unix timestamp to get check-ins after (0 for all)",
+        description="Date stamp (YYYYMMDD format, e.g., 20251201) to get check-ins after. 0 for all.",
         ge=0,
     )
     response_format: ResponseFormat = Field(

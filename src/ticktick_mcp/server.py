@@ -130,8 +130,16 @@ from ticktick_mcp.tools.inputs import (
     TagUpdateInput,
     FocusStatsInput,
     SearchInput,
+    HabitListInput,
+    HabitGetInput,
+    HabitCreateInput,
+    HabitUpdateInput,
+    HabitDeleteInput,
+    HabitCheckinInput,
+    HabitArchiveInput,
     HabitCheckinsInput,
 )
+from ticktick_mcp.models import Habit, HabitSection
 from ticktick_mcp.tools.formatting import (
     format_task_markdown,
     format_task_json,
@@ -1868,10 +1876,482 @@ async def ticktick_focus_by_tag(params: FocusStatsInput, ctx: Context) -> str:
 # =============================================================================
 
 
+def format_habit_markdown(habit: Habit) -> str:
+    """Format a habit for markdown display."""
+    lines = [
+        f"## {habit.name}",
+        f"- **ID**: `{habit.id}`",
+        f"- **Type**: {habit.habit_type}",
+        f"- **Goal**: {habit.goal} {habit.unit}",
+    ]
+
+    if habit.is_numeric:
+        lines.append(f"- **Step**: +{habit.step}")
+
+    lines.append(f"- **Status**: {'Archived' if habit.is_archived else 'Active'}")
+    lines.append(f"- **Total Check-ins**: {habit.total_checkins}")
+    lines.append(f"- **Current Streak**: {habit.current_streak}")
+
+    if habit.target_days > 0:
+        lines.append(f"- **Target**: {habit.target_days} days")
+
+    if habit.color:
+        lines.append(f"- **Color**: {habit.color}")
+
+    if habit.repeat_rule:
+        lines.append(f"- **Repeat**: `{habit.repeat_rule}`")
+
+    if habit.reminders:
+        lines.append(f"- **Reminders**: {', '.join(habit.reminders)}")
+
+    if habit.encouragement:
+        lines.append(f"- **Encouragement**: {habit.encouragement}")
+
+    return "\n".join(lines)
+
+
+def format_habit_json(habit: Habit) -> dict[str, Any]:
+    """Format a habit for JSON output."""
+    return {
+        "id": habit.id,
+        "name": habit.name,
+        "type": habit.habit_type,
+        "goal": habit.goal,
+        "step": habit.step,
+        "unit": habit.unit,
+        "status": "archived" if habit.is_archived else "active",
+        "total_checkins": habit.total_checkins,
+        "current_streak": habit.current_streak,
+        "target_days": habit.target_days,
+        "color": habit.color,
+        "icon": habit.icon,
+        "repeat_rule": habit.repeat_rule,
+        "reminders": habit.reminders,
+        "section_id": habit.section_id,
+        "encouragement": habit.encouragement,
+        "created_time": habit.created_time.isoformat() if habit.created_time else None,
+        "modified_time": habit.modified_time.isoformat() if habit.modified_time else None,
+    }
+
+
+def format_habits_markdown(habits: list[Habit], title: str = "Habits") -> str:
+    """Format multiple habits for markdown display."""
+    if not habits:
+        return f"# {title}\n\nNo habits found."
+
+    lines = [f"# {title}", f"*{len(habits)} habits*", ""]
+
+    for habit in habits:
+        status = "📦" if habit.is_archived else "✅" if habit.current_streak > 0 else "⏳"
+        lines.append(f"### {status} {habit.name}")
+        lines.append(f"- **ID**: `{habit.id}`")
+        lines.append(f"- **Type**: {habit.habit_type}")
+        lines.append(f"- **Streak**: {habit.current_streak} | Total: {habit.total_checkins}")
+        if habit.target_days > 0:
+            lines.append(f"- **Target**: {habit.target_days} days")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def format_habits_json(habits: list[Habit]) -> list[dict[str, Any]]:
+    """Format multiple habits for JSON output."""
+    return [format_habit_json(h) for h in habits]
+
+
+def format_section_markdown(section: HabitSection) -> str:
+    """Format a habit section for markdown display."""
+    return f"- **{section.display_name}** (`{section.id}`)"
+
+
+def format_sections_json(sections: list[HabitSection]) -> list[dict[str, Any]]:
+    """Format habit sections for JSON output."""
+    return [
+        {"id": s.id, "name": s.name, "display_name": s.display_name}
+        for s in sections
+    ]
+
+
+@mcp.tool(
+    name="ticktick_habits",
+    annotations={
+        "title": "List Habits",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_habits(params: HabitListInput, ctx: Context) -> str:
+    """
+    List all habits.
+
+    Retrieves all habits including their status, streaks, and goals.
+
+    Args:
+        params: Query parameters:
+            - include_archived (bool): Include archived habits (default: False)
+            - response_format (str): Output format ("markdown" or "json")
+
+    Returns:
+        List of habits with their details.
+    """
+    try:
+        client = get_client(ctx)
+        habits = await client.get_all_habits()
+
+        if not params.include_archived:
+            habits = [h for h in habits if h.is_active]
+
+        if params.response_format == ResponseFormat.MARKDOWN:
+            return format_habits_markdown(habits)
+        else:
+            return json.dumps(format_habits_json(habits), indent=2)
+
+    except Exception as e:
+        return handle_error(e, "list_habits")
+
+
+@mcp.tool(
+    name="ticktick_habit",
+    annotations={
+        "title": "Get Habit",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_habit(params: HabitGetInput, ctx: Context) -> str:
+    """
+    Get a specific habit by ID.
+
+    Args:
+        params: Query parameters:
+            - habit_id (str): Habit ID (required)
+            - response_format (str): Output format
+
+    Returns:
+        Habit details.
+    """
+    try:
+        client = get_client(ctx)
+        habit = await client.get_habit(params.habit_id)
+
+        if params.response_format == ResponseFormat.MARKDOWN:
+            return format_habit_markdown(habit)
+        else:
+            return json.dumps(format_habit_json(habit), indent=2)
+
+    except Exception as e:
+        return handle_error(e, "get_habit")
+
+
+@mcp.tool(
+    name="ticktick_habit_sections",
+    annotations={
+        "title": "List Habit Sections",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_habit_sections(ctx: Context, response_format: ResponseFormat = ResponseFormat.MARKDOWN) -> str:
+    """
+    List habit sections (time-of-day groupings).
+
+    Sections organize habits by time of day: Morning, Afternoon, Night.
+
+    Returns:
+        List of habit sections with their IDs.
+    """
+    try:
+        client = get_client(ctx)
+        sections = await client.get_habit_sections()
+
+        if response_format == ResponseFormat.MARKDOWN:
+            lines = ["# Habit Sections", ""]
+            for section in sections:
+                lines.append(format_section_markdown(section))
+            return "\n".join(lines)
+        else:
+            return json.dumps(format_sections_json(sections), indent=2)
+
+    except Exception as e:
+        return handle_error(e, "habit_sections")
+
+
+@mcp.tool(
+    name="ticktick_create_habit",
+    annotations={
+        "title": "Create Habit",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_create_habit(params: HabitCreateInput, ctx: Context) -> str:
+    """
+    Create a new habit.
+
+    Creates a habit with the specified configuration. Habits can be boolean
+    (yes/no) or numeric (count/measure).
+
+    Args:
+        params: Habit parameters:
+            - name (str): Habit name (required)
+            - habit_type (str): "Boolean" or "Real" (default: Boolean)
+            - goal (float): Target value (default: 1.0)
+            - step (float): Increment for numeric (default: 1.0)
+            - unit (str): Unit of measurement (default: Count)
+            - color (str): Hex color (optional)
+            - section_id (str): Time-of-day section (optional)
+            - repeat_rule (str): RRULE pattern (default: daily)
+            - reminders (list[str]): Times in HH:MM format
+            - target_days (int): Goal in days (0 = no target)
+            - encouragement (str): Motivational message
+
+    Returns:
+        Created habit details.
+    """
+    try:
+        client = get_client(ctx)
+        habit = await client.create_habit(
+            name=params.name,
+            habit_type=params.habit_type,
+            goal=params.goal,
+            step=params.step,
+            unit=params.unit,
+            color=params.color or "#97E38B",
+            section_id=params.section_id,
+            repeat_rule=params.repeat_rule,
+            reminders=params.reminders,
+            target_days=params.target_days,
+            encouragement=params.encouragement,
+        )
+
+        if params.response_format == ResponseFormat.MARKDOWN:
+            return f"# Habit Created\n\n{format_habit_markdown(habit)}"
+        else:
+            return json.dumps({"success": True, "habit": format_habit_json(habit)}, indent=2)
+
+    except Exception as e:
+        return handle_error(e, "create_habit")
+
+
+@mcp.tool(
+    name="ticktick_update_habit",
+    annotations={
+        "title": "Update Habit",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_update_habit(params: HabitUpdateInput, ctx: Context) -> str:
+    """
+    Update a habit's properties.
+
+    Args:
+        params: Update parameters:
+            - habit_id (str): Habit ID (required)
+            - name (str): New name
+            - goal (float): New goal
+            - step (float): New step
+            - unit (str): New unit
+            - color (str): New hex color
+            - section_id (str): New section ID
+            - repeat_rule (str): New RRULE pattern
+            - reminders (list[str]): New reminders
+            - target_days (int): New target days
+            - encouragement (str): New message
+
+    Returns:
+        Updated habit details.
+    """
+    try:
+        client = get_client(ctx)
+        habit = await client.update_habit(
+            habit_id=params.habit_id,
+            name=params.name,
+            goal=params.goal,
+            step=params.step,
+            unit=params.unit,
+            color=params.color,
+            section_id=params.section_id,
+            repeat_rule=params.repeat_rule,
+            reminders=params.reminders,
+            target_days=params.target_days,
+            encouragement=params.encouragement,
+        )
+
+        if params.response_format == ResponseFormat.MARKDOWN:
+            return f"# Habit Updated\n\n{format_habit_markdown(habit)}"
+        else:
+            return json.dumps({"success": True, "habit": format_habit_json(habit)}, indent=2)
+
+    except Exception as e:
+        return handle_error(e, "update_habit")
+
+
+@mcp.tool(
+    name="ticktick_delete_habit",
+    annotations={
+        "title": "Delete Habit",
+        "readOnlyHint": False,
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_delete_habit(params: HabitDeleteInput, ctx: Context) -> str:
+    """
+    Delete a habit.
+
+    Permanently removes the habit and all its check-in history.
+
+    Args:
+        params: Delete parameters:
+            - habit_id (str): Habit ID to delete (required)
+
+    Returns:
+        Confirmation message.
+    """
+    try:
+        client = get_client(ctx)
+        await client.delete_habit(params.habit_id)
+        return success_message(f"Habit `{params.habit_id}` deleted successfully.")
+
+    except Exception as e:
+        return handle_error(e, "delete_habit")
+
+
+@mcp.tool(
+    name="ticktick_checkin_habit",
+    annotations={
+        "title": "Check In Habit",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_checkin_habit(params: HabitCheckinInput, ctx: Context) -> str:
+    """
+    Check in a habit (complete for today).
+
+    Records a check-in for the habit, incrementing the total and streak.
+
+    Args:
+        params: Check-in parameters:
+            - habit_id (str): Habit ID (required)
+            - value (float): Check-in value (default: 1.0)
+
+    Returns:
+        Updated habit with new totals.
+    """
+    try:
+        client = get_client(ctx)
+        habit = await client.checkin_habit(params.habit_id, params.value)
+
+        if params.response_format == ResponseFormat.MARKDOWN:
+            lines = [
+                f"# Habit Checked In!",
+                "",
+                f"**{habit.name}** completed!",
+                f"- **Total Check-ins**: {habit.total_checkins}",
+                f"- **Current Streak**: {habit.current_streak}",
+            ]
+            return "\n".join(lines)
+        else:
+            return json.dumps({
+                "success": True,
+                "habit": format_habit_json(habit),
+            }, indent=2)
+
+    except Exception as e:
+        return handle_error(e, "checkin_habit")
+
+
+@mcp.tool(
+    name="ticktick_archive_habit",
+    annotations={
+        "title": "Archive Habit",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_archive_habit(params: HabitArchiveInput, ctx: Context) -> str:
+    """
+    Archive a habit.
+
+    Archived habits are hidden but preserved. Use unarchive to restore.
+
+    Args:
+        params: Archive parameters:
+            - habit_id (str): Habit ID to archive (required)
+
+    Returns:
+        Updated habit.
+    """
+    try:
+        client = get_client(ctx)
+        habit = await client.archive_habit(params.habit_id)
+
+        if params.response_format == ResponseFormat.MARKDOWN:
+            return f"# Habit Archived\n\n**{habit.name}** has been archived."
+        else:
+            return json.dumps({"success": True, "habit": format_habit_json(habit)}, indent=2)
+
+    except Exception as e:
+        return handle_error(e, "archive_habit")
+
+
+@mcp.tool(
+    name="ticktick_unarchive_habit",
+    annotations={
+        "title": "Unarchive Habit",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def ticktick_unarchive_habit(params: HabitArchiveInput, ctx: Context) -> str:
+    """
+    Unarchive a habit.
+
+    Restores an archived habit to active status.
+
+    Args:
+        params: Unarchive parameters:
+            - habit_id (str): Habit ID to unarchive (required)
+
+    Returns:
+        Updated habit.
+    """
+    try:
+        client = get_client(ctx)
+        habit = await client.unarchive_habit(params.habit_id)
+
+        if params.response_format == ResponseFormat.MARKDOWN:
+            return f"# Habit Unarchived\n\n**{habit.name}** has been restored."
+        else:
+            return json.dumps({"success": True, "habit": format_habit_json(habit)}, indent=2)
+
+    except Exception as e:
+        return handle_error(e, "unarchive_habit")
+
+
 @mcp.tool(
     name="ticktick_habit_checkins",
     annotations={
-        "title": "Get Habit Check-ins",
+        "title": "Get Habit Check-in History",
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
@@ -1880,27 +2360,50 @@ async def ticktick_focus_by_tag(params: FocusStatsInput, ctx: Context) -> str:
 )
 async def ticktick_habit_checkins(params: HabitCheckinsInput, ctx: Context) -> str:
     """
-    Get habit check-in data.
+    Get habit check-in history.
 
     Retrieves check-in records for the specified habits.
-
-    NOTE: To get habit IDs, use ticktick_sync and look at the 'habits' field.
 
     Args:
         params: Query parameters:
             - habit_ids (list[str]): List of habit IDs to query (required)
-            - after_timestamp (int): Unix timestamp to get check-ins after (0 for all)
+            - after_stamp (int): Date stamp (YYYYMMDD) to get check-ins after
 
     Returns:
-        JSON object with habit check-in data.
+        Check-in history for each habit.
     """
     try:
         client = get_client(ctx)
         data = await client.get_habit_checkins(
             habit_ids=params.habit_ids,
-            after_timestamp=params.after_timestamp,
+            after_stamp=params.after_stamp,
         )
-        return json.dumps(data, indent=2)
+
+        if params.response_format == ResponseFormat.MARKDOWN:
+            lines = ["# Habit Check-in History", ""]
+            for habit_id, checkins in data.items():
+                lines.append(f"## Habit `{habit_id}`")
+                if not checkins:
+                    lines.append("No check-ins found.")
+                else:
+                    for checkin in checkins:
+                        lines.append(f"- {checkin.checkin_stamp}: {checkin.value}")
+                lines.append("")
+            return "\n".join(lines)
+        else:
+            # Convert HabitCheckin objects to dicts
+            result = {}
+            for habit_id, checkins in data.items():
+                result[habit_id] = [
+                    {
+                        "checkin_stamp": c.checkin_stamp,
+                        "value": c.value,
+                        "goal": c.goal,
+                        "status": c.status,
+                    }
+                    for c in checkins
+                ]
+            return json.dumps(result, indent=2)
 
     except Exception as e:
         return handle_error(e, "habit_checkins")
