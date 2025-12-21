@@ -857,7 +857,7 @@ class HabitDeleteInput(BaseMCPInput):
 
 
 class HabitCheckinInput(BaseMCPInput):
-    """Input for checking in a habit (completing for today)."""
+    """Input for checking in a habit."""
 
     habit_id: str = Field(
         ...,
@@ -869,6 +869,14 @@ class HabitCheckinInput(BaseMCPInput):
         description="Check-in value. 1.0 for boolean habits, custom for numeric.",
         ge=0.1,
         le=10000,
+    )
+    checkin_date: Optional[date] = Field(
+        default=None,
+        description=(
+            "Date to check in for (YYYY-MM-DD format). "
+            "If not provided, checks in for today. "
+            "Use a past date to backdate the check-in (e.g., for migrating habit history)."
+        ),
     )
     response_format: ResponseFormat = Field(
         default=ResponseFormat.MARKDOWN,
