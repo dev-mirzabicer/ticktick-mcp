@@ -296,7 +296,7 @@ Once configured, you can ask Claude things like:
 | `ticktick_create_habit` | Create a new habit |
 | `ticktick_update_habit` | Update habit properties |
 | `ticktick_delete_habit` | Delete a habit |
-| `ticktick_checkin_habit` | Check in (complete for today) |
+| `ticktick_checkin_habit` | Check in for today or a past date |
 | `ticktick_archive_habit` | Archive a habit |
 | `ticktick_unarchive_habit` | Unarchive a habit |
 | `ticktick_habit_checkins` | Get check-in history |
@@ -653,9 +653,13 @@ async with TickTickClient.from_settings() as client:
         unit="Pages",
     )
 
-    # Check in a habit
+    # Check in a habit (today)
     habit = await client.checkin_habit("habit_id")
     print(f"Streak: {habit.current_streak} days!")
+
+    # Check in for a past date (backdate)
+    from datetime import date
+    habit = await client.checkin_habit("habit_id", checkin_date=date(2025, 12, 15))
 
     # Archive/unarchive
     await client.archive_habit("habit_id")
