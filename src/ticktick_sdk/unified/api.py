@@ -41,6 +41,7 @@ from ticktick_sdk.models import (
     HabitCheckin,
     HabitPreferences,
 )
+from ticktick_sdk.settings import _generate_object_id
 from ticktick_sdk.unified.router import APIRouter
 
 logger = logging.getLogger(__name__)
@@ -1635,17 +1636,21 @@ class UnifiedTickTickAPI:
         self,
         habit_id: str,
         value: float = 1.0,
+        checkin_date: date | None = None,
     ) -> Habit:
         """
-        Check in a habit (complete it for today).
+        Check in a habit for a specific date.
 
         V2-only operation.
 
-        This increments the habit's totalCheckIns and currentStreak.
+        If checkin_date is None or today, increments both totalCheckIns and
+        currentStreak. If checkin_date is a past date (backdating), only
+        increments totalCheckIns and creates a check-in record.
 
         Args:
             habit_id: Habit ID
             value: Check-in value (1.0 for boolean habits)
+            checkin_date: Date to check in for (None = today)
 
         Returns:
             Updated habit with preserved name and updated counters
@@ -1659,47 +1664,106 @@ class UnifiedTickTickAPI:
         # (The API may return habits with null names after update operations)
         original_habit = await self.get_habit(habit_id)
 
-        # Use update_habit directly instead of checkin_habit to preserve the name
-        # (The API nullifies fields that aren't sent in update operations)
-        response = await self._v2_client.update_habit(  # type: ignore
-            habit_id=habit_id,
-            name=original_habit.name,  # Preserve name!
-            total_checkins=original_habit.total_checkins + int(value),
-            current_streak=original_habit.current_streak + 1,
-        )
+        # Determine if this is a backdate operation
+        today = date.today()
+        is_backdate = checkin_date is not None and checkin_date < today
 
-        _check_batch_response_errors(response, "checkin_habit", [habit_id])
+        if is_backdate:
+            # Backdating: Create check-in record + update only totalCheckIns
+            checkin_stamp = int(checkin_date.strftime("%Y%m%d"))
+            checkin_id = _generate_object_id()
 
-        # Return a habit with updated counters but preserved original data
-        # This avoids the issue where the API returns null for name after updates
-        return Habit(
-            id=original_habit.id,
-            name=original_habit.name,
-            icon=original_habit.icon,
-            color=original_habit.color,
-            sort_order=original_habit.sort_order,
-            status=original_habit.status,
-            encouragement=original_habit.encouragement,
-            total_checkins=original_habit.total_checkins + int(value),
-            created_time=original_habit.created_time,
-            modified_time=original_habit.modified_time,
-            archived_time=original_habit.archived_time,
-            habit_type=original_habit.habit_type,
-            goal=original_habit.goal,
-            step=original_habit.step,
-            unit=original_habit.unit,
-            etag=original_habit.etag,
-            repeat_rule=original_habit.repeat_rule,
-            reminders=original_habit.reminders,
-            record_enable=original_habit.record_enable,
-            section_id=original_habit.section_id,
-            target_days=original_habit.target_days,
-            target_start_date=original_habit.target_start_date,
-            completed_cycles=original_habit.completed_cycles,
-            ex_dates=original_habit.ex_dates,
-            current_streak=original_habit.current_streak + 1,
-            style=original_habit.style,
-        )
+            # Step 1: Create the check-in record
+            await self._v2_client.create_habit_checkin(  # type: ignore
+                checkin_id=checkin_id,
+                habit_id=habit_id,
+                checkin_stamp=checkin_stamp,
+                value=value,
+                goal=original_habit.goal,
+            )
+
+            # Step 2: Update habit's totalCheckIns only (not streak for past dates)
+            response = await self._v2_client.update_habit(  # type: ignore
+                habit_id=habit_id,
+                name=original_habit.name,  # Preserve name!
+                total_checkins=original_habit.total_checkins + int(value),
+                # Note: currentStreak is NOT incremented for backdated check-ins
+            )
+
+            _check_batch_response_errors(response, "checkin_habit", [habit_id])
+
+            # Return habit with updated totalCheckIns but unchanged streak
+            return Habit(
+                id=original_habit.id,
+                name=original_habit.name,
+                icon=original_habit.icon,
+                color=original_habit.color,
+                sort_order=original_habit.sort_order,
+                status=original_habit.status,
+                encouragement=original_habit.encouragement,
+                total_checkins=original_habit.total_checkins + int(value),
+                created_time=original_habit.created_time,
+                modified_time=original_habit.modified_time,
+                archived_time=original_habit.archived_time,
+                habit_type=original_habit.habit_type,
+                goal=original_habit.goal,
+                step=original_habit.step,
+                unit=original_habit.unit,
+                etag=original_habit.etag,
+                repeat_rule=original_habit.repeat_rule,
+                reminders=original_habit.reminders,
+                record_enable=original_habit.record_enable,
+                section_id=original_habit.section_id,
+                target_days=original_habit.target_days,
+                target_start_date=original_habit.target_start_date,
+                completed_cycles=original_habit.completed_cycles,
+                ex_dates=original_habit.ex_dates,
+                current_streak=original_habit.current_streak,  # Unchanged
+                style=original_habit.style,
+            )
+        else:
+            # Today's check-in: Use existing fast path
+            # Use update_habit directly instead of checkin_habit to preserve the name
+            # (The API nullifies fields that aren't sent in update operations)
+            response = await self._v2_client.update_habit(  # type: ignore
+                habit_id=habit_id,
+                name=original_habit.name,  # Preserve name!
+                total_checkins=original_habit.total_checkins + int(value),
+                current_streak=original_habit.current_streak + 1,
+            )
+
+            _check_batch_response_errors(response, "checkin_habit", [habit_id])
+
+            # Return a habit with updated counters but preserved original data
+            # This avoids the issue where the API returns null for name after updates
+            return Habit(
+                id=original_habit.id,
+                name=original_habit.name,
+                icon=original_habit.icon,
+                color=original_habit.color,
+                sort_order=original_habit.sort_order,
+                status=original_habit.status,
+                encouragement=original_habit.encouragement,
+                total_checkins=original_habit.total_checkins + int(value),
+                created_time=original_habit.created_time,
+                modified_time=original_habit.modified_time,
+                archived_time=original_habit.archived_time,
+                habit_type=original_habit.habit_type,
+                goal=original_habit.goal,
+                step=original_habit.step,
+                unit=original_habit.unit,
+                etag=original_habit.etag,
+                repeat_rule=original_habit.repeat_rule,
+                reminders=original_habit.reminders,
+                record_enable=original_habit.record_enable,
+                section_id=original_habit.section_id,
+                target_days=original_habit.target_days,
+                target_start_date=original_habit.target_start_date,
+                completed_cycles=original_habit.completed_cycles,
+                ex_dates=original_habit.ex_dates,
+                current_streak=original_habit.current_streak + 1,
+                style=original_habit.style,
+            )
 
     async def archive_habit(self, habit_id: str) -> Habit:
         """

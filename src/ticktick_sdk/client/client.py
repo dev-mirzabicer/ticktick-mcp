@@ -892,23 +892,36 @@ class TickTickClient:
         self,
         habit_id: str,
         value: float = 1.0,
+        checkin_date: date | None = None,
     ) -> Habit:
         """
-        Check in a habit (complete it for today).
+        Check in a habit for a specific date.
 
-        This increments the habit's totalCheckIns and currentStreak.
+        If checkin_date is None or today, increments both totalCheckIns and
+        currentStreak. If checkin_date is a past date (backdating), only
+        increments totalCheckIns and creates a check-in record for that date.
 
         Args:
             habit_id: Habit ID
             value: Check-in value (1.0 for boolean habits)
+            checkin_date: Date to check in for. None means today.
+                          Use a past date to backdate the check-in.
 
         Returns:
             Updated habit
 
         Raises:
             TickTickNotFoundError: If habit not found
+
+        Example:
+            # Check in for today
+            await client.checkin_habit("habit_id")
+
+            # Backdate a check-in to December 15, 2025
+            from datetime import date
+            await client.checkin_habit("habit_id", checkin_date=date(2025, 12, 15))
         """
-        return await self._api.checkin_habit(habit_id, value)
+        return await self._api.checkin_habit(habit_id, value, checkin_date)
 
     async def archive_habit(self, habit_id: str) -> Habit:
         """
