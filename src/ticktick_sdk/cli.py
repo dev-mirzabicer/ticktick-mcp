@@ -32,7 +32,26 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 from typing import NoReturn
+
+
+def load_dotenv_if_available() -> None:
+    """Load .env file if python-dotenv is available."""
+    try:
+        from dotenv import load_dotenv
+
+        # Try current directory first, then walk up to find .env
+        cwd = Path.cwd()
+        for parent in [cwd, *cwd.parents]:
+            env_file = parent / ".env"
+            if env_file.exists():
+                load_dotenv(env_file)
+                return
+        # Fallback: let dotenv search for .env
+        load_dotenv()
+    except ImportError:
+        pass  # python-dotenv not installed, skip
 
 
 def get_version() -> str:
@@ -199,6 +218,9 @@ def main() -> int | NoReturn:
     Returns:
         Exit code (0 for success, non-zero for error).
     """
+    # Load .env file before doing anything else
+    load_dotenv_if_available()
+
     parser = create_parser()
     args = parser.parse_args()
 
