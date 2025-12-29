@@ -128,11 +128,16 @@ Use TickTick with AI assistants like Claude through the Model Context Protocol.
 
 ### Step 2: Get OAuth2 Access Token
 
-Run the auth command with your credentials:
+Create a `.env` file with your credentials (the CLI loads it automatically):
 
 ```bash
-TICKTICK_CLIENT_ID=your_client_id \
-TICKTICK_CLIENT_SECRET=your_client_secret \
+TICKTICK_CLIENT_ID=your_client_id
+TICKTICK_CLIENT_SECRET=your_client_secret
+```
+
+Then run:
+
+```bash
 ticktick-sdk auth
 ```
 
@@ -210,6 +215,25 @@ Add to your Claude Desktop config:
     }
   }
 }
+```
+
+#### Codex CLI
+
+```bash
+codex mcp add ticktick \
+  --env TICKTICK_CLIENT_ID=your_client_id \
+  --env TICKTICK_CLIENT_SECRET=your_client_secret \
+  --env TICKTICK_ACCESS_TOKEN=your_access_token \
+  --env TICKTICK_USERNAME=your_email \
+  --env TICKTICK_PASSWORD=your_password \
+  -- ticktick-sdk
+```
+
+Verify it's working:
+
+```bash
+codex mcp list         # See configured servers
+codex                  # Start Codex - TickTick tools are now available
 ```
 
 #### Other MCP-Compatible Tools
