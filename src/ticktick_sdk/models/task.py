@@ -152,6 +152,16 @@ class Task(TickTickModel):
     def parse_datetime_field(cls, v: Any) -> datetime | None:
         return cls.parse_datetime(v)
 
+    @field_validator("repeat_from", mode="before")
+    @classmethod
+    def parse_repeat_from(cls, v: Any) -> int | None:
+        if v == "" or v is None:
+            return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return None
+
     @field_validator("reminders", mode="before")
     @classmethod
     def parse_reminders(cls, v: Any) -> list[TaskReminder]:
