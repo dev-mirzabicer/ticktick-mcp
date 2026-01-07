@@ -906,6 +906,7 @@ The inbox is a special project that cannot be deleted. Get its ID via `await cli
 | `TICKTICK_REDIRECT_URI` | No | OAuth2 redirect URI (default: `http://127.0.0.1:8080/callback`) |
 | `TICKTICK_TIMEOUT` | No | Request timeout in seconds (default: `30`) |
 | `TICKTICK_DEVICE_ID` | No | Device ID for V2 API (auto-generated) |
+| `TICKTICK_DOMAIN` | No | TickTick domain to use (default: `ticktick.com`, alternative: `dida365.com`) |
 
 ---
 
