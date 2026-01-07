@@ -9,16 +9,21 @@ from __future__ import annotations
 
 from enum import IntEnum, StrEnum
 from typing import Literal
+import os
 
 
 # =============================================================================
 # API Configuration
 # =============================================================================
+def _get_ticktick_domain():
+    """Get the TickTick domain from environment or default."""
+    domain = os.environ.get("TICKTICK_DOMAIN")
+    return domain if domain else "ticktick.com"
 
 # Base URLs
-TICKTICK_API_BASE_V1 = "https://api.ticktick.com/open/v1"
-TICKTICK_API_BASE_V2 = "https://api.ticktick.com/api/v2"
-TICKTICK_OAUTH_BASE = "https://ticktick.com/oauth"
+TICKTICK_API_BASE_V1 = f"https://api.{_get_ticktick_domain()}/open/v1"
+TICKTICK_API_BASE_V2 = f"https://api.{_get_ticktick_domain()}/api/v2"
+TICKTICK_OAUTH_BASE = f"https://{_get_ticktick_domain()}/oauth"
 
 # Default timeout in seconds
 DEFAULT_TIMEOUT = 30.0
